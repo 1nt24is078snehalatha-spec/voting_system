@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title> Master voting Portal</title>
+    <style>
+        :root { --primary: #2563eb; --admin: #475569; --success: #16a34a; --bg: #f8fafc; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        .card { background: white; width: 100%; max-width: 450px; padding: 2rem; border-radius: 12px; box-shadow: 0 10px 15px rgba(0,0,0,0.1); margin-top: 20px; }
+        h2 { text-align: center; margin-top: 0; color: #1e293b; }
+        input, textarea { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box; }
+        button { width: 100%; padding: 12px; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; margin-top: 10px; transition: 0.3s; }
+        .btn-blue { background: var(--primary); }
+        .btn-green { background: var(--success); }
+        .btn-gray { background: var(--admin); }
+        .hidden { display: none; }
+        .option-item { border: 1px solid #e2e8f0; padding: 12px; margin: 8px 0; border-radius: 8px; cursor: pointer; display: flex; align-items: center; }
+        .res-row { margin: 15px 0; }
+        .bar-bg { background: #e2e8f0; height: 14px; border-radius: 10px; margin-top: 6px; overflow: hidden; }
+        .bar-fill { background: var(--primary); height: 100%; width: 0%; border-radius: 10px; transition: width 1s ease-in-out; }
+        .nav-links { margin-top: 20px; display: flex; gap: 20px; font-size: 0.85rem; color: #64748b; }
+        .link { text-decoration: underline; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<div id="voter-card" class="card">
+    <h2>VOTING BALLOT</h2>
+    <div id="step-auth">
+        <input type="email" id="email" placeholder="College Email">
+        <input type="text" id="usn" placeholder="USN (e.g., 1MS22CS001)">
+        <button class="btn-blue" onclick="loadPoll()">Enter Voting Room</button>
+    </div>
+    <div id="step-vote" class="hidden">
+        <h3 id="poll-q"></h3>
+        <div id="options-list"></div>
+        <button class="btn-green" onclick="submitVote()">Submit Vote</button>
+    </div>
+</div>
+
+<div id="results-card" class="card hidden">
+    <h2>📊 Live Standings</h2>
+    <div id="results-display"></div>
+    <p id="total-votes" style="text-align: center; font-size: 0.9rem; color: #64748b;"></p>
+    <button class="btn-blue" onclick="refreshResults()">Refresh Data</button>
+    <button class="btn-gray" onclick="location.reload()">Back to Home</button>
+</div>
+
+<div id="admin-card" class="card hidden">
+    <h2>⚙️ question Panel</h2>
+    <textarea id="new-q" rows="2" placeholder="New Question?"></textarea>
+    <input type="text" id="new-opts" placeholder="Options (comma separated)">
+    <button class="btn-gray" onclick="publishPoll()">Publish New Poll</button>
+    <p id="admin-status" style="text-align:center;"></p>
+</div>
+
+<div class="nav-links">
+    <span class="link" onclick="showView('voter-card')">Voter View</span>
+    <span class="link" onclick="refreshResults()">Quick Results</span>
+    <span class="link" onclick="showView('admin-card')">Admin Panel</span>
+</div>
+
+<script>
+    const API = "http://localhost:18080";
+    let pollId = null;
+
+    // Navigation Helper
+    function showView(id) {
+        document.querySelectorAll('.card').forEach(c => c.classList.add('hidden'));
+        document.getElementById(id).classList.remove('hidden');
+    }
+
+    // --- VOTER LOGIC ---
+    async function loadPoll() {
+        if (!document.getElementById('email').value || !document.getElementById('usn').value) return alert("Fill all fields");
+        try {
+            const res = await fetch(`${API}/latest`);
+            const data = await res.json();
+            pollId = data.id;
+            document.getElementById('poll-q').innerText = data.question;
+            document.getElementById('options-list').innerHTML = data.options.map(o => `
+                <div class="option-item" onclick="document.getElementById('r-${o}').checked=true">
+                    <input type="radio" name="v" value="${o}" id="r-${o}"> <label style="margin-left:10px">${o}</label>
+                </div>
+            `).join('');
+            showView('voter-card');
+            document.getElementById('step-auth').classList.add('hidden');
+            document.getElementById('step-vote').classList.remove('hidden');
+        } catch (e) { alert("No active polls."); }
+    }
+
+    async function submitVote() {
+        const sel = document.querySelector('input[name="v"]:checked');
+        if (!sel) return alert("Select an option");
+        const payload = {
+            id: pollId, email: document.getElementById('email').value,
+            usn: document.getElementById('usn').value, option: sel.value
+        };
+        const res = await fetch(`${API}/vote`, { method: 'POST', body: JSON.stringify(payload) });
+        if (res.status === 409) alert("Already Voted!");
+        else if (res.ok) refreshResults();
+    }
+
+    // --- RESULTS LOGIC ---
+    async function refreshResults() {
+        try {
+            const res = await fetch(`${API}/latest`);
+            const data = await res.json();
+            showView('results-card');
+            
+            const total = Object.values(data.results).reduce((a, b) => a + b, 0);
+            document.getElementById('total-votes').innerText = `Total Participation: ${total}`;
+            
+            document.getElementById('results-display').innerHTML = Object.entries(data.results).map(([opt, count]) => {
+                const pct = total === 0 ? 0 : Math.round((count / total) * 100);
+                return `<div class="res-row">
+                    <div style="display:flex; justify-content:space-between">
+                        <span style="font-weight:600">${opt}</span>
+                        <span>${count} votes (${pct}%)</span>
+                    </div>
+                    <div class="bar-bg"><div class="bar-fill" style="width:${pct}%"></div></div>
+                </div>`;
+            }).join('');
+        } catch (e) { alert("Error loading results. Is the server running?"); }
+    }
+
+    // --- ADMIN LOGIC ---
+    async function publishPoll() {
+        const q = document.getElementById('new-q').value;
+        const opts = document.getElementById('new-opts').value.split(',').map(o => o.trim());
+        if(!q || opts.length < 2) return alert("Enter question and at least 2 options");
+        
+        const res = await fetch(`${API}/admin/question`, { 
+            method: 'POST', 
+            body: JSON.stringify({ question: q, options: opts }) 
+        });
+        if (res.ok) {
+            document.getElementById('admin-status').innerText = "✅ New Poll Live!";
+            setTimeout(() => location.reload(), 1000);
+        }
+    }
+</script>
+</body>
+</html>
