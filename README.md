@@ -48,7 +48,8 @@ HOW TO RUN PROJECT:
 • Run the backend server (default port: 18080).
 • Open the frontend HTML file in a browser.
 • Ensure API URL is set to http://localhost:18080.
-9. Future Enhancements
+
+FUTURE ENHANCEMENTS
 • Database integration (MySQL / PostgreSQL).
 • Authentication with admin token security.
 • Multiple concurrent polls support.
